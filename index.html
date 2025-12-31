@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Data Matcher – Prototype</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #f5f7fa;
+    margin:0;
+    padding:0;
+}
+header {
+    background:#0f172a;
+    color:white;
+    padding:16px 24px;
+    font-size:18px;
+    font-weight:600;
+}
+.container {
+    padding:24px;
+}
+input[type=file] {
+    margin-bottom:16px;
+}
+button {
+    padding:8px 12px;
+    border-radius:8px;
+    border:none;
+    background:#2563eb;
+    color:white;
+    cursor:pointer;
+    margin-bottom:16px;
+}
+button:hover {
+    background:#1e40af;
+}
+table {
+    width:100%;
+    border-collapse:collapse;
+    margin-top:16px;
+    background:white;
+}
+th, td {
+    border:1px solid #e5e7eb;
+    padding:8px;
+    text-align:left;
+}
+th {
+    background:#f9fafb;
+}
+</style>
+</head>
+<body>
+
+<header>🔗 Data Matcher – Prototype</header>
+<div class="container">
+    <h3>Uploader les fichiers à matcher</h3>
+    <input type="file" id="file1" accept=".xlsx,.xls" multiple><br>
+    <input type="file" id="file2" accept=".xlsx,.xls" multiple><br>
+    <button onclick="matchFiles()">Matcher les fichiers</button>
+    <button onclick="downloadCSV()">Télécharger CSV</button>
+
+    <div id="result">
+        <h3>Résultat :</h3>
+        <table id="tableResult">
+            <thead>
+                <tr id="tableHead"></tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+let mergedData = [];
+
+function readFile(file){
+    return new Promise((resolve, reject)=>{
+        const reader = new FileReader();
+        reader.onload = (e)=>{
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type:'array'});
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(sheet);
+            resolve(json);
+        }
+        reader.onerror = err=>reject(err);
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+// Normalisation des noms simples
+function normalizeName(name){
+    if(!name) return '';
+    let n = name.toUpperCase();
+    n = n.replace(/^(M |MME |DR )/,''); // Supprime M, Mme, Dr
+    n = n.replace(/\./g,''); // supprime points
+    n = n.trim();
+    return n;
+}
+
+// Matching simple
+function matchEntries(data1, data2){
+    let merged = [];
+    data1.forEach(d1=>{
+        const n1 = normalizeName(d1.Nom) + ' ' + normalizeName(d1.Prenom);
+        let matched = data2.find(d2=>{
+            const n2 = normalizeName(d2.Nom) + ' ' + normalizeName(d2.Prenom);
+            return n1 === n2;
+        });
+        if(matched){
+            merged.push({...d1, ...matched});
+        } else {
+            merged.push(d1);
+        }
+    });
+    // ajoute les entrées de data2 qui ne sont pas dans data1
+    data2.forEach(d2=>{
+        const n2 = normalizeName(d2.Nom) + ' ' + normalizeName(d2.Prenom);
+        if(!merged.some(d=>normalizeName(d.Nom)+' '+normalizeName(d.Prenom)===n2)){
+            merged.push(d2);
+        }
+    });
+    return merged;
+}
+
+async function matchFiles(){
+    const files1 = document.getElementById('file1').files;
+    const files2 = document.getElementById('file2').files;
+    if(files1.length===0 || files2.length===0){
+        alert('Veuillez sélectionner au moins un fichier dans chaque input');
+        return;
+    }
+
+    let data1=[], data2=[];
+    for(let f of files1){
+        const d = await readFile(f);
+        data1 = data1.concat(d);
+    }
+    for(let f of files2){
+        const d = await readFile(f);
+        data2 = data2.concat(d);
+    }
+
+    mergedData = matchEntries(data1, data2);
+    renderTable(mergedData);
+}
+
+function renderTable(data){
+    const head = document.getElementById('tableHead');
+    const body = document.getElementById('tableBody');
+    head.innerHTML=''; body.innerHTML='';
+    if(data.length===0) return;
+
+    // Header dynamique
+    const keys = Object.keys(data[0]);
+    keys.forEach(k=>{
+        const th = document.createElement('th');
+        th.innerText = k;
+        head.appendChild(th);
+    });
+
+    // Rows
+    data.forEach(d=>{
+        const tr = document.createElement('tr');
+        keys.forEach(k=>{
+            const td = document.createElement('td');
+            td.innerText = d[k] || '';
+            tr.appendChild(td);
+        });
+        body.appendChild(tr);
+    });
+}
+
+// Télécharger CSV
+function downloadCSV(){
+    if(mergedData.length===0) return;
+    const keys = Object.keys(mergedData[0]);
+    const csv = [
+        keys.join(','), 
+        ...mergedData.map(d=>keys.map(k=>d[k]||'').join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'merged.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+</script>
+
+</body>
+</html>
