@@ -2,13 +2,14 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Data Matcher – Prototype Fictif</title>
+<title>Data Matcher – Multi fichiers fictifs</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 body { font-family: Arial,sans-serif; background:#f5f7fa; margin:0; padding:0; }
 header { background:#0f172a; color:white; padding:16px 24px; font-size:18px; font-weight:600; }
 .container { padding:24px; }
-button { padding:8px 12px; border-radius:8px; border:none; background:#2563eb; color:white; cursor:pointer; margin-bottom:16px; }
+input, select, button { margin-bottom:16px; padding:8px; border-radius:6px; border:1px solid #ccc; }
+button { background:#2563eb; color:white; border:none; cursor:pointer; }
 button:hover { background:#1e40af; }
 table { width:100%; border-collapse:collapse; margin-top:16px; background:white; }
 th, td { border:1px solid #e5e7eb; padding:8px; text-align:left; }
@@ -17,10 +18,18 @@ th { background:#f9fafb; }
 </head>
 <body>
 
-<header>🔗 Data Matcher – Prototype Fictif</header>
+<header>🔗 Data Matcher – Multi fichiers fictifs</header>
 <div class="container">
-    <button onclick="matchFiles()">Lancer le matching</button>
+    <label>Nombre de fichiers fictifs à générer (2 à 5) :</label>
+    <select id="numFiles">
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+    </select><br>
+    <button onclick="generateAndMatch()">Générer et Matcher</button>
     <button onclick="downloadCSV()">Télécharger CSV</button>
+
     <h3>Résultat :</h3>
     <table id="tableResult">
         <thead>
@@ -31,71 +40,91 @@ th { background:#f9fafb; }
 </div>
 
 <script>
-let file1 = [
-    {Nom:"DUPUIS", Prenom:"Michel", Email:"michel.dupuis@mail.com"},
-    {Nom:"MARTIN", Prenom:"Alice", Email:"alice@mail.com"},
-    {Nom:"LEFEVRE", Prenom:"Julien", Email:"julien@mail.com"},
-    {Nom:"BENOIT", Prenom:"Claire", Email:"claire@mail.com"},
-    {Nom:"DURAND", Prenom:"Paul", Email:"paul@mail.com"},
-    {Nom:"ROBERT", Prenom:"Sophie", Email:"sophie@mail.com"},
-    {Nom:"MOREAU", Prenom:"Emma", Email:"emma@mail.com"},
-    {Nom:"RICHARD", Prenom:"Louis", Email:"louis@mail.com"},
-    {Nom:"FONTAINE", Prenom:"Julie", Email:"julie@mail.com"},
-    {Nom:"GARNIER", Prenom:"Marc", Email:"marc@mail.com"}
-];
-
-let file2 = [
-    {Nom:"M DUPUIS", Prenom:"Michel", Email:"m.dupuis@mail.com"},
-    {Nom:"ALICE MARTIN", Prenom:"Alice", Email:"alice.martin@mail.com"},
-    {Nom:"LEFEVRE", Prenom:"Julien", Email:"j.lefevre@mail.com"},
-    {Nom:"BENOIT", Prenom:"Claire", Email:"claire.benoit@mail.com"},
-    {Nom:"DURAND", Prenom:"Paul", Email:"p.durand@mail.com"},
-    {Nom:"ROBERT", Prenom:"Sophie", Email:"s.robert@mail.com"},
-    {Nom:"MOREAU", Prenom:"Emma", Email:"emma.moreau@mail.com"},
-    {Nom:"RICHARD", Prenom:"Louis", Email:"l.richard@mail.com"},
-    {Nom:"FONTANE", Prenom:"Julie", Email:"j.fontane@mail.com"},
-    {Nom:"GARNIER", Prenom:"Marc", Email:"marc.garnier@mail.com"}
-];
-
-let mergedData = [];
-
-function normalizeName(name){
-    if(!name) return '';
-    let n = name.toUpperCase();
-    n = n.replace(/^(M |MME |DR )/,''); 
-    n = n.replace(/\./g,''); 
-    n = n.trim();
-    return n;
+// Génération de données fictives par type
+function generateData(type){
+    const entries = [];
+    for(let i=1;i<=10;i++){
+        if(type==="Client"){
+            entries.push({
+                ID:"C"+i,
+                Nom:"Client"+i,
+                Email:"client"+i+"@mail.com"
+            });
+        } else if(type==="Produit"){
+            entries.push({
+                ID:"P"+i,
+                Nom:"Produit"+i,
+                Prix:(Math.floor(Math.random()*100)+1)
+            });
+        } else if(type==="Commande"){
+            entries.push({
+                ID:"O"+i,
+                ClientID:"C"+((i%10)+1),
+                ProduitID:"P"+((i%10)+1),
+                Quantité:Math.floor(Math.random()*5)+1
+            });
+        } else if(type==="Fournisseur"){
+            entries.push({
+                ID:"F"+i,
+                Nom:"Fournisseur"+i,
+                Ville:["Paris","Lyon","Marseille"][i%3]
+            });
+        } else if(type==="Stock"){
+            entries.push({
+                ProduitID:"P"+i,
+                Stock:Math.floor(Math.random()*50)
+            });
+        }
+    }
+    return entries;
 }
 
-function matchEntries(data1, data2){
+// Normalisation simple pour matching
+function normalize(str){
+    if(!str) return '';
+    return str.toUpperCase().replace(/\./g,'').trim();
+}
+
+// Merge des fichiers par clé
+function mergeFiles(files){
     let merged = [];
-    data1.forEach(d1=>{
-        const n1 = normalizeName(d1.Nom) + ' ' + normalizeName(d1.Prenom);
-        let matched = data2.find(d2=>{
-            const n2 = normalizeName(d2.Nom) + ' ' + normalizeName(d2.Prenom);
-            return n1 === n2;
+    if(files.length===0) return merged;
+
+    // On prend comme base le premier fichier
+    merged = files[0].map(e=>({...e}));
+
+    for(let f=1; f<files.length; f++){
+        const current = files[f];
+        current.forEach(item=>{
+            // Cherche match sur ID si possible
+            let key = item.ID || item.ClientID || item.ProduitID;
+            let match = merged.find(m=>{
+                let mKey = m.ID || m.ClientID || m.ProduitID;
+                return normalize(mKey)===normalize(key);
+            });
+            if(match){
+                Object.assign(match,item);
+            } else {
+                merged.push(item);
+            }
         });
-        if(matched){
-            merged.push({...d1, ...matched});
-        } else {
-            merged.push(d1);
-        }
-    });
-    data2.forEach(d2=>{
-        const n2 = normalizeName(d2.Nom) + ' ' + normalizeName(d2.Prenom);
-        if(!merged.some(d=>normalizeName(d.Nom)+' '+normalizeName(d.Prenom)===n2)){
-            merged.push(d2);
-        }
-    });
+    }
     return merged;
 }
 
-function matchFiles(){
-    mergedData = matchEntries(file1,file2);
+// Génération + fusion
+let mergedData = [];
+function generateAndMatch(){
+    const n = parseInt(document.getElementById('numFiles').value);
+    const types = ["Client","Produit","Commande","Fournisseur","Stock"];
+    const selectedTypes = types.slice(0,n);
+
+    const files = selectedTypes.map(t=>generateData(t));
+    mergedData = mergeFiles(files);
     renderTable(mergedData);
 }
 
+// Affichage tableau
 function renderTable(data){
     const head = document.getElementById('tableHead');
     const body = document.getElementById('tableBody');
@@ -120,6 +149,7 @@ function renderTable(data){
     });
 }
 
+// Télécharger CSV
 function downloadCSV(){
     if(mergedData.length===0) return;
     const keys = Object.keys(mergedData[0]);
@@ -136,9 +166,6 @@ function downloadCSV(){
     a.click();
     URL.revokeObjectURL(url);
 }
-
-// Lancer automatiquement le matching au chargement
-matchFiles();
 </script>
 
 </body>
